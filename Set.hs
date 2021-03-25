@@ -7,7 +7,6 @@ import Data.List (sort)
 data Set a = Empty
            | Singleton a
            | Union (Set a) (Set a)
-           deriving(Show)
 
 empty :: Set a
 empty = Empty
@@ -38,6 +37,15 @@ toList x = go x [] where
 toAscList :: Ord a => Set a -> [a]
 toAscList = sort . toList
 
+-- Moze z akceleratorem??
+nubOrdered :: Ord a => [a] -> [a]
+nubOrdered [] = []
+nubOrdered [x] = [x]
+nubOrdered (x:xs) = x:go x xs where
+    go _ [] = []
+    go x (y:ys)     |   x /= y    = y : go y ys
+                    |   x == y    = go x ys
+
 elems :: Set a -> [a]
 elems = toList
 
@@ -48,14 +56,32 @@ insert :: a -> Set a -> Set a
 insert x = union (singleton x)
 
 instance Ord a => Eq (Set a) where
-    Singleton a == Singleton b = a == b
-    
+    Singleton a == Singleton b          =       a == b
+    Empty == Empty                      =       True
+    Empty == _                          =       False 
+    _ == Empty                          =       False
+    a == b                              =       nubOrdered (toAscList a) == nubOrdered (toAscList b)
 
 
---instance Semigroup (Set a) where
+instance Semigroup (Set a) where
+  Empty <> a = a
+  a <> Empty = a
+  a <> b = a `union` b
 
---instance Monoid (Set a) where
+instance Monoid (Set a) where
+    mempty = Empty
+    mappend = union
 
---instance Show a => Show (Set a) where
+instance Show a => Show (Set a) where
+   showsPrec d Empty = showParen (d > 0) $ showString "Empty"
+   showsPrec d (Singleton a) = showParen (d > 0) $ showString $ "Singleton " ++ show a
+   showsPrec d (Union a b) = showParen (d > 0) $
+        showString "Union " .
+        showsPrec 1 a       .
+        showString " "      .
+        showsPrec 1 b
 
---instance Functor Set where
+instance Functor Set where
+    fmap f Empty = Empty
+    fmap f (Singleton a) = singleton $ f a
+    fmap f (Union a b) = fmap f a `union` fmap f b
