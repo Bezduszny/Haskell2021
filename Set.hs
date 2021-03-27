@@ -1,5 +1,5 @@
 module Set(Set(..), empty, null, singleton, union, fromList
-              , member, toList, toAscList, elems
+              , member, toList, toAscList, elems, ordElems, nubOrdered
           ) where
 import Prelude hiding(null)
 import Data.List (sort)
@@ -35,7 +35,7 @@ toList x = go x [] where
     go (Union x y) acc = go x (go y acc)
 
 toAscList :: Ord a => Set a -> [a]
-toAscList = sort . toList
+toAscList = nubOrdered . sort . toList
 
 -- Moze z akceleratorem??
 nubOrdered :: Ord a => [a] -> [a]
@@ -49,8 +49,13 @@ nubOrdered (x:xs) = x:go x xs where
 elems :: Set a -> [a]
 elems = toList
 
+ordElems :: Ord a => Set a -> [a]
+ordElems = nubOrdered . toAscList
+
 union :: Set a -> Set a -> Set a
-union = Union
+union Empty a = a
+union a Empty = a
+union a b = Union a b
 
 insert :: a -> Set a -> Set a
 insert x = union (singleton x)
