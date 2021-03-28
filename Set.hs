@@ -37,7 +37,6 @@ toList x = go x [] where
 toAscList :: Ord a => Set a -> [a]
 toAscList = nubOrdered . sort . toList
 
--- Moze z akceleratorem??
 nubOrdered :: Ord a => [a] -> [a]
 nubOrdered [] = []
 nubOrdered [x] = [x]

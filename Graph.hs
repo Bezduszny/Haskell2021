@@ -42,11 +42,7 @@ basicDomain (Vertex a) = [a]
 basicDomain Empty = []
 basicDomain (Union a b) = basicDomain a ++ basicDomain b
 basicDomain (Connect a b) = basicDomain a ++ basicDomain b
-{-
-basicVertices :: Basic a -> [a]
-basicVertices (Connect a b) = []
-basicVertices = basicDomain
--}
+
 basicRelation :: Basic a -> [(a, a)]
 basicRelation Empty = []
 basicRelation (Vertex a) = []
@@ -79,6 +75,12 @@ instance Semigroup (Basic a) where
 instance Monoid (Basic a) where
   mempty = Empty
 
+instance Functor Basic where
+    fmap f Empty = Empty
+    fmap f (Vertex x) = Vertex (f x)
+    fmap f (Union x y) = union (fmap f x) (fmap f y)
+    fmap f (Connect x y) = connect (fmap f x) (fmap f y)  
+
 fromBasic :: Graph g => Basic a -> g a
 fromBasic Empty = empty
 fromBasic (Vertex a) = vertex a
@@ -92,7 +94,7 @@ vertices (Vertex a) = [a]
 vertices (Union a b) = vertices a ++ vertices b
 
 verticesOrd :: Ord a => Basic a -> [a]
-verticesOrd = Set.nubOrdered . sort . vertices
+verticesOrd g = filter (hasNoEdges g) $ Set.nubOrdered $ sort $ vertices g
 
 edges :: Ord a => Basic a -> [(a,a)]
 edges = Set.nubOrdered . sort . basicRelation
@@ -106,26 +108,56 @@ todot a = "digraph {\n" ++
           (concat (map (\x -> show x ++ ";\n") (vertices a))) ++ 
           "}"
 
+-- | Merge vertices
+
+-- edges [(1,2),(2,3),(2,4),(3,5),(4,5)] + vertices [17]
+-- >>> mergeV 3 4 34 example34
+-- edges [(1,2),(2,34),(34,5)] + vertices [17]
+
+hasNoEdges :: Eq a => Basic a -> a -> Bool
+hasNoEdges g a = all (==False) [a == x || a == y | (x,y) <- (basicRelation g)]
+
 mergeV :: Eq a => a -> a -> a -> Basic a -> Basic a
-mergeV a b c g = undefined
+mergeV a b c g = (mergeVertices a b c g) `union` (mergeEdges a b c g)
+
+mergeVertices :: Eq a => a -> a -> a -> Basic a -> Basic a
+mergeVertices a b c g= foldl (union) empty [vertex x | x <- c:(vertices g), x /= a, x /= b]
+
+mergeEdges :: Eq a => a -> a -> a -> Basic a -> Basic a
+mergeEdges a b c g = (foldl (union) empty [connect (vertex x) (vertex y) | (x,y) <- replace a b c (basicRelation g)])
+
+replace :: Eq a => a -> a -> a -> [(a,a)] -> [(a,a)]
+replace a b c d = replace1st a b c $ replace2nd a b c d
+
+replace1st :: Eq a => a -> a -> a -> [(a,a)] -> [(a,a)]
+replace1st a b c d = map (\(x,y) -> if x == a || x == b then (c,y) else (x,y)) d
+
+replace2nd :: Eq a => a -> a -> a -> [(a,a)] -> [(a,a)]
+replace2nd a b c d = map (\(x,y) -> if y == a || y == b then (x,c) else (x,y)) d
+
+instance Applicative Basic where
+  pure = vertex
+  Empty <*> x = Empty
+  (Vertex f) <*> x = fmap f x
+  (Union f g) <*> x = union (f <*> x) (g <*> x)
+  (Connect f g) <*> x = connect (f <*> x) (g <*> x)
+
+instance Monad Basic where
+    return = Vertex
+    Empty >>= _ = Empty
+    (Vertex x) >>= f = f x
+    (Union x y) >>= f = union (x >>= f) (y >>= f)
+    (Connect x y) >>= f = connect (x >>= f) (y >>= f)
+
+-- map (\x -> if (a == x) then b else x)
+-- [x*y :: Basic Int | (x,y) <- [(1,1),(2,2),(3,3)]]
+
 
 {-
 -- | Example graph
 -- >>> example34
 -- edges [(1,2),(2,3),(2,4),(3,5),(4,5)] + vertices [17]
-
-example34 :: Basic Int
-example34 = 1*2 + 2*(3+4) + (3+4)*5 + 17
-
-instance Functor Basic where
-
--- | Merge vertices
--- >>> mergeV 3 4 34 example34
--- edges [(1,2),(2,34),(34,5)] + vertices [17]
-
-instance Applicative Basic where
-
-instance Monad Basic where
+-- e = 1*2 + 2*(3+4) + (3+4)*5 + 17 :: Basic Int
 
 -- | Split Vertex
 -- >>> splitV 34 3 4 (mergeV 3 4 34 example34)
