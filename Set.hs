@@ -1,5 +1,5 @@
 module Set(Set(..), empty, null, singleton, union, fromList
-              , member, toList, toAscList, elems, ordElems, nubOrdered
+              , member, toList, toAscList, nubOrdered
           ) where
 import Prelude hiding(null)
 import Data.List (sort)
@@ -37,6 +37,7 @@ toList x = go x [] where
 toAscList :: Ord a => Set a -> [a]
 toAscList = nubOrdered . sort . toList
 
+--usuwa duplikaty z posortowanej listy
 nubOrdered :: Ord a => [a] -> [a]
 nubOrdered [] = []
 nubOrdered [x] = [x]
@@ -44,12 +45,6 @@ nubOrdered (x:xs) = x:go x xs where
     go _ [] = []
     go x (y:ys)     |   x /= y    = y : go y ys
                     |   x == y    = go x ys
-
-elems :: Set a -> [a]
-elems = toList
-
-ordElems :: Ord a => Set a -> [a]
-ordElems = nubOrdered . toAscList
 
 union :: Set a -> Set a -> Set a
 union Empty a = a
@@ -64,8 +59,7 @@ instance Ord a => Eq (Set a) where
     Empty == Empty                      =       True
     Empty == _                          =       False 
     _ == Empty                          =       False
-    a == b                              =       nubOrdered (toAscList a) == nubOrdered (toAscList b)
-
+    a == b                              =       toAscList a == toAscList b
 
 instance Semigroup (Set a) where
   Empty <> a = a
