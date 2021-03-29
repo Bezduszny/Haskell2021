@@ -37,6 +37,12 @@ data Basic a = Empty
              | Union (Basic a) (Basic a)
              | Connect (Basic a) (Basic a)
 
+fromBasic :: Graph g => Basic a -> g a
+fromBasic Empty = empty
+fromBasic (Vertex a) = vertex a
+fromBasic (Union a b) = fromBasic a `union` fromBasic b
+fromBasic (Connect a b) = fromBasic a `connect` fromBasic b
+
 basicDomain :: Basic a -> [a]
 basicDomain (Vertex a) = [a]
 basicDomain Empty = []
@@ -53,13 +59,12 @@ instance Graph Basic where
     empty = Empty
     vertex = Vertex
     union = Union
-    
-    connect Empty a = a
-    connect a Empty = a
-    connect a b = Connect a b
+    connect = Connect
 
 instance Ord a => Eq (Basic a) where
-  a == b    =  (verticesOrd a) == (verticesOrd b) && (edges a) == (edges b)
+  a == b    =    toRelation a == toRelation b where 
+                      toRelation :: Ord a => Basic a -> Relation a
+                      toRelation = fromBasic
 
 instance (Ord a, Num a) => Num (Basic a) where
     fromInteger = vertex . fromInteger
@@ -78,14 +83,22 @@ instance Monoid (Basic a) where
 instance Functor Basic where
     fmap f Empty = Empty
     fmap f (Vertex x) = Vertex (f x)
-    fmap f (Union x y) = union (fmap f x) (fmap f y)
+    fmap f (Union x y) = fmap f x `union` fmap f y
     fmap f (Connect x y) = connect (fmap f x) (fmap f y)  
 
-fromBasic :: Graph g => Basic a -> g a
-fromBasic Empty = empty
-fromBasic (Vertex a) = vertex a
-fromBasic (Union a b) = fromBasic a `union` fromBasic b
-fromBasic (Connect a b) = fromBasic a `connect` fromBasic b
+instance Applicative Basic where
+  pure = vertex
+  Empty <*> x = Empty
+  (Vertex f) <*> x = fmap f x
+  (Union f g) <*> x = (f <*> x) `union` (g <*> x)
+  (Connect f g) <*> x = (f <*> x) `connect` (g <*> x)
+
+instance Monad Basic where
+    return = Vertex
+    Empty >>= _ = Empty
+    (Vertex x) >>= f = f x
+    (Union x y) >>= f = (x >>= f) `union` (y >>= f)
+    (Connect x y) >>= f = (x >>= f) `connect` (y >>= f)
 
 vertices :: Basic a -> [a]
 vertices Empty = []
@@ -100,70 +113,19 @@ edges :: Ord a => Basic a -> [(a,a)]
 edges = Set.nubOrdered . sort . basicRelation
 
 instance (Ord a, Show a) => Show (Basic a) where
-    show a = "edges " ++ show (edges a) ++ " + vertices " ++ show (verticesOrd a)
+    show a = "edges "  ++ show (edges a) ++ " + vertices " ++ show (verticesOrd a)
       
 todot :: (Ord a, Show a) => Basic a -> String
 todot a = "digraph {\n" ++ 
-          (concat (map (\(x,y) -> show x ++ " -> " ++ show y ++ ";\n") (edges a))) ++ 
-          (concat (map (\x -> show x ++ ";\n") (vertices a))) ++ 
+          concatMap (\(x,y) -> show x ++ " -> " ++ show y ++ ";\n") (edges a) ++ 
+          concatMap (\x -> show x ++ ";\n") (vertices a) ++ 
           "}"
 
--- | Merge vertices
-
--- edges [(1,2),(2,3),(2,4),(3,5),(4,5)] + vertices [17]
--- >>> mergeV 3 4 34 example34
--- edges [(1,2),(2,34),(34,5)] + vertices [17]
-
 hasNoEdges :: Eq a => Basic a -> a -> Bool
-hasNoEdges g a = all (==False) [a == x || a == y | (x,y) <- (basicRelation g)]
+hasNoEdges g a = all (==False) [a == x || a == y | (x,y) <- basicRelation g]
 
 mergeV :: Eq a => a -> a -> a -> Basic a -> Basic a
-mergeV a b c g = (mergeVertices a b c g) `union` (mergeEdges a b c g)
-
-mergeVertices :: Eq a => a -> a -> a -> Basic a -> Basic a
-mergeVertices a b c g= foldl (union) empty [vertex x | x <- c:(vertices g), x /= a, x /= b]
-
-mergeEdges :: Eq a => a -> a -> a -> Basic a -> Basic a
-mergeEdges a b c g = (foldl (union) empty [connect (vertex x) (vertex y) | (x,y) <- replace a b c (basicRelation g)])
-
-replace :: Eq a => a -> a -> a -> [(a,a)] -> [(a,a)]
-replace a b c d = replace1st a b c $ replace2nd a b c d
-
-replace1st :: Eq a => a -> a -> a -> [(a,a)] -> [(a,a)]
-replace1st a b c d = map (\(x,y) -> if x == a || x == b then (c,y) else (x,y)) d
-
-replace2nd :: Eq a => a -> a -> a -> [(a,a)] -> [(a,a)]
-replace2nd a b c d = map (\(x,y) -> if y == a || y == b then (x,c) else (x,y)) d
-
-instance Applicative Basic where
-  pure = vertex
-  Empty <*> x = Empty
-  (Vertex f) <*> x = fmap f x
-  (Union f g) <*> x = union (f <*> x) (g <*> x)
-  (Connect f g) <*> x = connect (f <*> x) (g <*> x)
-
-instance Monad Basic where
-    return = Vertex
-    Empty >>= _ = Empty
-    (Vertex x) >>= f = f x
-    (Union x y) >>= f = union (x >>= f) (y >>= f)
-    (Connect x y) >>= f = connect (x >>= f) (y >>= f)
-
--- map (\x -> if (a == x) then b else x)
--- [x*y :: Basic Int | (x,y) <- [(1,1),(2,2),(3,3)]]
-
-
-{-
--- | Example graph
--- >>> example34
--- edges [(1,2),(2,3),(2,4),(3,5),(4,5)] + vertices [17]
--- e = 1*2 + 2*(3+4) + (3+4)*5 + 17 :: Basic Int
-
--- | Split Vertex
--- >>> splitV 34 3 4 (mergeV 3 4 34 example34)
--- edges [(1,2),(2,3),(2,4),(3,5),(4,5)] + vertices [17]
+mergeV a b c g = g >>= (\x -> if x == a || x == b then vertex c else vertex x)
 
 splitV :: Eq a => a -> a -> a -> Basic a -> Basic a
-splitV = undefined
-
--}
+splitV a b c g = g >>= (\x -> if x == a then vertex b `union` vertex c else vertex x) 
