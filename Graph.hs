@@ -8,7 +8,9 @@ class Graph g where
   union   :: g a -> g a -> g a
   connect :: g a -> g a -> g a
 
--- RELATION
+--------------
+---RELATION---
+--------------
 
 data Relation a = Relation { domain :: Set a, relation :: Set (a, a) }
     deriving (Eq, Show)
@@ -30,7 +32,9 @@ instance (Ord a, Num a) => Num (Relation a) where
     abs         = id
     negate      = id
 
--- BASIC
+---------------
+-----BASIC-----
+---------------
 
 data Basic a = Empty
              | Vertex a
@@ -43,17 +47,8 @@ fromBasic (Vertex a) = vertex a
 fromBasic (Union a b) = fromBasic a `union` fromBasic b
 fromBasic (Connect a b) = fromBasic a `connect` fromBasic b
 
-basicDomain :: Basic a -> [a]
-basicDomain (Vertex a) = [a]
-basicDomain Empty = []
-basicDomain (Union a b) = basicDomain a ++ basicDomain b
-basicDomain (Connect a b) = basicDomain a ++ basicDomain b
-
-basicRelation :: Basic a -> [(a, a)]
-basicRelation Empty = []
-basicRelation (Vertex a) = []
-basicRelation (Union a b) = basicRelation a ++ basicRelation b
-basicRelation (Connect a b) = basicRelation a ++ basicRelation b ++ [(x,y) | x <- basicDomain a, y <- basicDomain b]
+toRelation :: Ord a => Basic a -> Relation a
+toRelation = fromBasic
 
 instance Graph Basic where
     empty = Empty
@@ -62,10 +57,8 @@ instance Graph Basic where
     connect = Connect
 
 instance Ord a => Eq (Basic a) where
-  a == b    =    toRelation a == toRelation b where 
-                      toRelation :: Ord a => Basic a -> Relation a
-                      toRelation = fromBasic
-
+  a == b    =    toRelation a == toRelation b
+                      
 instance (Ord a, Num a) => Num (Basic a) where
     fromInteger = vertex . fromInteger
     (+)         = union
@@ -100,29 +93,20 @@ instance Monad Basic where
     (Union x y) >>= f = (x >>= f) `union` (y >>= f)
     (Connect x y) >>= f = (x >>= f) `connect` (y >>= f)
 
-vertices :: Basic a -> [a]
-vertices Empty = []
-vertices (Connect _ _) = []
-vertices (Vertex a) = [a]
-vertices (Union a b) = vertices a ++ vertices b
-
-verticesOrd :: Ord a => Basic a -> [a]
-verticesOrd g = filter (hasNoEdges g) $ Set.nubOrdered $ sort $ vertices g
+ordVertices :: Ord a => Basic a -> [a]
+ordVertices = Set.toAscList . domain. toRelation
 
 edges :: Ord a => Basic a -> [(a,a)]
-edges = Set.nubOrdered . sort . basicRelation
+edges = Set.ordElems . relation . toRelation
 
 instance (Ord a, Show a) => Show (Basic a) where
-    show a = "edges "  ++ show (edges a) ++ " + vertices " ++ show (verticesOrd a)
-      
+    show a = "edges "  ++ show (edges a) ++ " + vertices " ++ show (ordVertices a)
+                                                                               
 todot :: (Ord a, Show a) => Basic a -> String
 todot a = "digraph {\n" ++ 
           concatMap (\(x,y) -> show x ++ " -> " ++ show y ++ ";\n") (edges a) ++ 
-          concatMap (\x -> show x ++ ";\n") (vertices a) ++ 
+          concatMap (\x -> show x ++ ";\n") (ordVertices a) ++ 
           "}"
-
-hasNoEdges :: Eq a => Basic a -> a -> Bool
-hasNoEdges g a = all (==False) [a == x || a == y | (x,y) <- basicRelation g]
 
 mergeV :: Eq a => a -> a -> a -> Basic a -> Basic a
 mergeV a b c g = g >>= (\x -> if x == a || x == b then vertex c else vertex x)
